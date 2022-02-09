@@ -1,0 +1,9 @@
+{
+    "updateRate" : 3,
+    "candleSize" : 1,
+    "candleLimit" : 1000,
+
+    "tradeSize" : 0.101,
+    "username" : "usernameHere",
+    "pKey" : "privateActiveKeyHere"
+}
