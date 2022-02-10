@@ -71,10 +71,19 @@ const logProgress = () => {
 }
 
 const tradingAlgo = (prevEma, prevmacd, prev2macd, preCandle) => {
-    if ( 
-        parseFloat(preCandle.close) > parseFloat(prevEma)
+    if ( parseFloat(preCandle.close) > parseFloat(prevEma)
         && parseFloat(prevmacd.MACD) > parseFloat(prevmacd.signal)
         && parseFloat(prev2macd.MACD) < parseFloat(prev2macd.signal) && parseFloat(prev2macd.MACD) < 0
+        ) {
+        return true;
+    }
+    return false
+}
+
+const tradingAlgoSell = (prevEma, prevmacd, prev2macd, preCandle) => {
+    if ( parseFloat(preCandle.close) < parseFloat(prevEma)
+        && parseFloat(prevmacd.MACD) < parseFloat(prevmacd.signal)
+        && parseFloat(prev2macd.MACD) > parseFloat(prev2macd.signal) && parseFloat(prev2macd.MACD) > 0
         ) {
         return true;
     }
@@ -297,7 +306,7 @@ const updatePrice = () => {
                         buyHive();
                     }
 
-                    if (tradingAlgo(globalState.lastEmaHbd, globalState.lastMacHbd, globalState.prevMacHbd, globalState.candleDataBase2[globalState.candleDataBase2.length - 1])
+                    if (tradingAlgoSell(globalState.lastEmaHbd, globalState.lastMacHbd, globalState.prevMacHbd, globalState.candleDataBase2[globalState.candleDataBase2.length - 1])
                     && (globalState.lastUpdate - globalState.lastBuyTimeHbd) / 1000 >= 180) {
                         buyHbd();
                     }
