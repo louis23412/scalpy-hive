@@ -1,6 +1,8 @@
 const fs = require('fs');
 const hive = require('@hiveio/hive-js');
-const { updateRate, candleSize, candleLimit, tradeSize, username, pKey} = JSON.parse(fs.readFileSync('./settings.json'));
+const { 
+    updateRate, candleSize, candleLimit, tradeSize, username, pKey, bKey
+} = JSON.parse(fs.readFileSync('./settings.json'));
 const EMA = require('technicalindicators').EMA;
 const MACD = require('technicalindicators').MACD;
 
@@ -79,11 +81,37 @@ const tradingAlgo = (prevEma, prevmacd, prev2macd, preCandle) => {
     return false
 }
 
+const countDecimals = (value) => {
+    let text = value.toString()
+
+    if (text.indexOf('e-') > -1) {
+      let [base, trail] = text.split('e-');
+      let deg = parseInt(trail, 10);
+      return deg;
+    }
+
+    if (Math.floor(value) !== value) {
+      return value.toString().split(".")[1].length || 0;
+    }
+    return 0;
+}
+
 const buyHive = () => {
     globalState.lastBuyTimeHive = new Date().getTime();
 
     let sellAmount = `${tradeSize} HBD`
-    let receiveAmount = `${round(tradeSize / globalState.candleDataBase1[globalState.candleDataBase1.length - 1].close, 3)} HIVE`
+
+    let xamount = round(tradeSize / globalState.candleDataBase1[globalState.candleDataBase1.length - 1].close, 3)
+    let xdec = countDecimals(xamount);
+    let receiveAmount = 0;
+
+    if (xdec == 3) {
+        receiveAmount = `${xamount} HIVE`
+    } else if (xdec == 2) {
+        receiveAmount = `${xamount}0 HIVE`
+    } else if (xdec == 1) {
+        receiveAmount = `${xamount}00 HIVE`
+    }
 
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
@@ -102,7 +130,18 @@ const buyHbd = () => {
     globalState.lastBuyTimeHbd = new Date().getTime();
 
     let sellAmount = `${tradeSize} HIVE`
-    let receiveAmount = `${round(globalState.candleDataBase2[globalState.candleDataBase2.length - 1].close * tradeSize, 3)} HBD`
+
+    let xamount = round(globalState.candleDataBase2[globalState.candleDataBase2.length - 1].close * tradeSize, 3)
+    let xdec = countDecimals(xamount);
+    let receiveAmount = 0;
+
+    if (xdec == 3) {
+        receiveAmount = `${xamount} HBD`
+    } else if (xdec == 2) {
+        receiveAmount = `${xamount}0 HBD`
+    } else if (xdec == 1) {
+        receiveAmount = `${xamount}00 HBD`
+    }
 
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
@@ -156,6 +195,32 @@ const createCandle = () => {
     
     console.log(`Candle created! #${globalState.candleCounter}`)
     console.log('----------------------')
+
+    if (globalState.candleDataBase1.length % 30 == 0) {
+        reportToMaster();
+    }
+}
+
+const reportToMaster = () => {
+    const json = JSON.stringify({
+        candlesCreated : globalState.candleCounter,
+        currentCandles : globalState.candleDataBase1.length,
+        priceCheckErrors : globalState.priceUpdateErrors,
+        tradeStatus : globalState.tradeStatus,
+        hiveBuyTicker : globalState.hiveBuyCounter,
+        hiveBuyErrors : globalState.hiveBuyErrors,
+        hbdBuyTicker : globalState.hbdBuyCounter,
+        hbdBuyErrors : globalState.hbdBuyErrors
+    });
+
+    try {
+        hive.broadcast.customJson(bKey, [], [username], `${username}-scalpyh-report`, json, function(err, result) {
+            if (err) {
+            } else {
+            }
+        });
+    } catch (error) {
+    }
 }
 
 const generateSignals = () => {
