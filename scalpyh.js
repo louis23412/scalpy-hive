@@ -125,7 +125,7 @@ const buyHive = () => {
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
-                hive.broadcast.limitOrderCreate(pKey, username, globalState.hiveBuyCounter + 100, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 180000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
+                hive.broadcast.limitOrderCreate(pKey, username, globalState.hiveBuyCounter + 100, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
                     globalState.hiveBuyCounter++
                 });
             }
@@ -155,7 +155,7 @@ const buyHbd = () => {
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
-                hive.broadcast.limitOrderCreate(pKey, username, globalState.hbdBuyCounter + 1000, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 180000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
+                hive.broadcast.limitOrderCreate(pKey, username, globalState.hbdBuyCounter + 1000, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
                     globalState.hbdBuyCounter++
                 });
             }
