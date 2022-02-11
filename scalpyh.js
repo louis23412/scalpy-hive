@@ -10,27 +10,22 @@ let globalState = {
     updateCounter : 0,
     candleCounter : 0,
     priceUpdateErrors : 0,
-    tradeStatus : 'Generating data',
+    tradeStatus : false,
 
-    priceTicker : {
-        lowestAsk : 0,
-        highestBid : 0
-    },
+    prevAsk : 0,
+    prevBid : 0,
 
-    candleDataBase1 : [],
-    candleDataBase2 : [],
-    tempPriceHolder1 : [],
-    tempPriceHolder2 : [],
+    priceTicker : 0,
 
-    closePriceList : {},
+    candleDataBase : [],
+    tempRealpriceChangeHolder : [],
 
-    emaListHive : [],
-    emaListHbd : [],
-    macdListHive : [],
-    macdListHbd : [],
+    closePriceList : [],
 
-    lastBuyTimeHive : new Date().getTime(),
-    lastBuyTimeHbd : new Date().getTime(),
+    emaList : [],
+    macdList : [],
+
+    lastBuyTime : new Date().getTime(),
 
     hiveBuyCounter : 0,
     hiveBuyErrors : 0,
@@ -80,16 +75,16 @@ const countDecimals = (value) => {
 }
 
 const logProgress = () => {
-    console.log(`* Price updated (#${globalState.updateCounter})! - Current candles: ${globalState.candleDataBase1.length} / ${candleLimit} (Price check errors: ${globalState.priceUpdateErrors})`)
-    console.log(`* Buy Hive Ticker: ${globalState.priceTicker.lowestAsk} - Buy Hbd Ticker: ${globalState.priceTicker.highestBid}`)
+    console.log(`* Price updated (#${globalState.updateCounter})! - Current candles: ${globalState.candleDataBase.length} / ${candleLimit} (Price check errors: ${globalState.priceUpdateErrors})`)
     console.log(`* Trade status: ${globalState.tradeStatus} ==> Hive buy count: ${globalState.hiveBuyCounter}(${globalState.hiveBuyErrors} errors) - Hbd buy count: ${globalState.hbdBuyCounter}(${globalState.hbdBuyErrors} errors)`)
+    console.log(`Price ticker: ${globalState.priceTicker}`)
     console.log('----------------------')
 }
 
 const reportToMaster = () => {
     const json = JSON.stringify({
         candlesCreated : globalState.candleCounter,
-        currentCandles : globalState.candleDataBase1.length,
+        currentCandles : globalState.candleDataBase.length,
         priceCheckErrors : globalState.priceUpdateErrors,
         tradeStatus : globalState.tradeStatus,
         hiveBuyTicker : globalState.hiveBuyCounter,
@@ -112,37 +107,24 @@ const reportToMaster = () => {
 //Candles + signals:
 const generatePriceLists = () => {
     if (globalState.candleCounter > 0) {
-        globalState.closePriceList.hive = [];
-        globalState.closePriceList.hbd = [];
+        globalState.closePriceList = [];
 
-        for (i of globalState.candleDataBase1) {
-            globalState.closePriceList.hive.push(i.close)
-        }
-
-        for (i of globalState.candleDataBase2) {
-            globalState.closePriceList.hbd.push(i.close)
+        for (i of globalState.candleDataBase) {
+            globalState.closePriceList.push(i.close)
         }
     }
 }
 
 const createCandle = () => {
     globalState.candleCounter++;
-    globalState.candleDataBase1.push({
-        open : globalState.tempPriceHolder1[0],
-        high : Math.max(...globalState.tempPriceHolder1),
-        close : globalState.tempPriceHolder1[globalState.tempPriceHolder1.length -1],
-        low : Math.min(...globalState.tempPriceHolder1)
+    globalState.candleDataBase.push({
+        open : Number(globalState.tempRealpriceChangeHolder[0]),
+        high : Math.max(...globalState.tempRealpriceChangeHolder),
+        close : Number(globalState.tempRealpriceChangeHolder[globalState.tempRealpriceChangeHolder.length -1]),
+        low : Math.min(...globalState.tempRealpriceChangeHolder)
     })
 
-    globalState.candleDataBase2.push({
-        open : globalState.tempPriceHolder2[0],
-        high : Math.max(...globalState.tempPriceHolder2),
-        close : globalState.tempPriceHolder2[globalState.tempPriceHolder2.length -1],
-        low : Math.min(...globalState.tempPriceHolder2)
-    })
-
-    globalState.tempPriceHolder1 = [];
-    globalState.tempPriceHolder2 = [];
+    globalState.tempRealpriceChangeHolder = [];
 
     generatePriceLists();
     generateSignals();
@@ -156,19 +138,44 @@ const createCandle = () => {
 }
 
 const generateSignals = () => {
-    globalState.emaListHive = ema(globalState.closePriceList.hive, 100);
-    globalState.emaListHbd = ema(globalState.closePriceList.hbd, 100);
-    globalState.macdListHive = macd(globalState.closePriceList.hive, 12, 26, 9);
-    globalState.macdListHbd = macd(globalState.closePriceList.hbd, 12, 26, 9);
+    globalState.emaList = ema(globalState.closePriceList, 100);
+    globalState.macdList = macd(globalState.closePriceList, 12, 26, 9);
 
-    globalState.lastEmaHive = globalState.emaListHive[globalState.emaListHive.length - 1];
-    globalState.lastEmaHbd = globalState.emaListHbd[globalState.emaListHbd.length - 1];
+    globalState.lastEma = globalState.emaList[globalState.emaList.length - 1];
+    globalState.lastMac = globalState.macdList[globalState.macdList.length - 1];
+    globalState.prevMac = globalState.macdList[globalState.macdList.length - 2];
+}
 
-    globalState.lastMacHive = globalState.macdListHive[globalState.macdListHive.length - 1];
-    globalState.prevMacHive = globalState.macdListHive[globalState.macdListHive.length - 2];
+const pushToTemp = (data) => {
+    globalState.lastAsk = Number(data.lowest_ask);
+    globalState.lastBid = Number(data.highest_bid);
 
-    globalState.lastMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 1];
-    globalState.prevMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 2];
+    if (globalState.lastAsk > globalState.prevAsk || globalState.lastAsk < globalState.prevAsk) {
+        globalState.prevAsk = globalState.lastAsk;
+        globalState.priceTicker = globalState.lastAsk;
+        globalState.tempRealpriceChangeHolder.push(globalState.lastAsk);
+    }
+    else if (globalState.lastBid > globalState.prevBid || globalState.lastBid < globalState.prevBid) {
+        globalState.prevBid = globalState.lastBid;
+        globalState.priceTicker = globalState.lastBid;
+        globalState.tempRealpriceChangeHolder.push(globalState.lastBid);
+    }
+    else if ((globalState.lastAsk > globalState.prevAsk || globalState.lastAsk < globalState.prevAsk)
+        && (globalState.lastBid > globalState.prevBid || globalState.lastBid < globalState.prevBid)) {
+        
+        globalState.prevAsk = globalState.lastAsk;
+        globalState.prevBid = globalState.lastBid;
+        globalState.priceTicker = globalState.lastAsk;
+        globalState.tempRealpriceChangeHolder.push(globalState.lastAsk);
+    }
+    else {
+        if (globalState.updateCounter == 1) {
+            globalState.priceTicker = globalState.lastAsk
+            globalState.tempRealpriceChangeHolder.push(globalState.lastAsk);
+        } else {
+            globalState.tempRealpriceChangeHolder.push(globalState.lastAsk);
+        }
+    }
 }
 
 
@@ -200,7 +207,7 @@ const buyHive = () => {
 
     let sellAmount = `${tradeSize} HBD`
 
-    let xamount = round(tradeSize / globalState.candleDataBase1[globalState.candleDataBase1.length - 1].close, 3)
+    let xamount = round(tradeSize / globalState.candleDataBase[globalState.candleDataBase.length - 1].close, 3)
     let xdec = countDecimals(xamount);
     let receiveAmount = 0;
 
@@ -230,7 +237,7 @@ const buyHbd = () => {
 
     let sellAmount = `${tradeSize} HIVE`
 
-    let xamount = round(globalState.candleDataBase2[globalState.candleDataBase2.length - 1].close * tradeSize, 3)
+    let xamount = round(globalState.candleDataBase[globalState.candleDataBase.length - 1].close * tradeSize, 3)
     let xdec = countDecimals(xamount);
     let receiveAmount = 0;
 
@@ -267,37 +274,26 @@ const updatePrice = () => {
             if (globalState.lastUpdate - globalState.lastCandleCreated >= (candleSize * 60) * 1000) {
                 createCandle()
                 globalState.lastCandleCreated = globalState.lastUpdate;
+                console.log(globalState.candleDataBase);
             }
 
-            if (globalState.candleDataBase1.length == candleLimit + 1) {
-                globalState.candleDataBase1.shift();
-                globalState.candleDataBase2.shift();
-
-                globalState.closePriceList.hive.shift();
-                globalState.closePriceList.hbd.shift();
+            if (globalState.candleDataBase.length == candleLimit + 1) {
+                globalState.candleDataBase.shift();
+                globalState.closePriceList.shift();
             }
 
-            if (globalState.emaListHive.length > 25) {
-                globalState.emaListHive = globalState.emaListHive.slice(Math.max(globalState.emaListHive.length - 25, 1));
+            if (globalState.emaList.length > 10) {
+                globalState.emaList = globalState.emaList.slice(Math.max(globalState.emaList.length - 10, 1));
             }
-            if (globalState.emaListHbd.length > 25) {
-                globalState.emaListHbd = globalState.emaListHbd.slice(Math.max(globalState.emaListHbd.length - 25, 1));
-            }
-            if (globalState.macdListHive.length > 25) {
-                globalState.macdListHive = globalState.macdListHive.slice(Math.max(globalState.macdListHive.length - 25, 1));
-            }
-            if (globalState.macdListHbd.length > 25) {
-                globalState.macdListHbd = globalState.macdListHbd.slice(Math.max(globalState.macdListHbd.length - 25, 1));
+
+            if (globalState.macdList.length > 10) {
+                globalState.macdList = globalState.macdList.slice(Math.max(globalState.macdList.length - 10, 1));
             }
 
             try {
                 hive.api.getTicker(function(err, data) {
                     if (data) {
-                        globalState.tempPriceHolder1.push(Number(data.lowest_ask))
-                        globalState.priceTicker.lowestAsk = Number(data.lowest_ask)
-
-                        globalState.tempPriceHolder2.push(Number(data.highest_bid))
-                        globalState.priceTicker.highestBid = Number(data.highest_bid)
+                        pushToTemp(data);
                     } else {
                         globalState.priceUpdateErrors++;
                     }
@@ -306,19 +302,20 @@ const updatePrice = () => {
                 globalState.priceUpdateErrors++;
             }
 
-            if (globalState.emaListHive.length > 2 && globalState.emaListHbd.length > 2
-                && !isNaN(globalState.lastEmaHive) && !isNaN(globalState.lastEmaHbd)) {
-                    globalState.tradeStatus = 'Now trading!'
+            if (globalState.emaList.length > 2 && globalState.emaList.length > 2
+                && !isNaN(globalState.lastEma) && !isNaN(globalState.lastEma)) {
 
-                    if (tradingAlgo(globalState.lastEmaHive, globalState.lastMacHive, globalState.prevMacHive, globalState.candleDataBase1[globalState.candleDataBase1.length - 1])
-                    && (globalState.lastUpdate - globalState.lastBuyTimeHive) / 1000 >= 180) {
-                        buyHive();
-                    }
+                globalState.tradeStatus = true;
 
-                    if (tradingAlgoSell(globalState.lastEmaHbd, globalState.lastMacHbd, globalState.prevMacHbd, globalState.candleDataBase2[globalState.candleDataBase2.length - 1])
-                    && (globalState.lastUpdate - globalState.lastBuyTimeHbd) / 1000 >= 180) {
-                        buyHbd();
-                    }
+                if (tradingAlgo(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
+                && (globalState.lastUpdate - globalState.lastBuyTimeHive) / 1000 >= 180) {
+                    buyHive();
+                }
+
+                if (tradingAlgoSell(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
+                && (globalState.lastUpdate - globalState.lastBuyTimeHbd) / 1000 >= 180) {
+                    buyHbd();
+                }
             }
 
             updatePrice();
