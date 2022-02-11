@@ -3,7 +3,7 @@
     "candleSize" : 1,
     "candleLimit" : 1000,
 
-    "tradeSize" : 0.333,
+    "tradeSize" : 0.301,
     "username" : "usernameHere",
     "pKey" : "privateActiveKeyHere",
     "bKey" : "privatePostingKeyHere"

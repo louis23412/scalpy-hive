@@ -39,26 +39,6 @@ const round = (value, decimals) => {
     return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
 };
 
-const ema = (close, per) => {
-    let input = {
-        period: per,
-        values: close
-    };
-    return EMA.calculate(input);
-};
-
-const macd = (close, fastPer, slowPer, signal) => {
-    const macdInput = {
-        values : close,
-        fastPeriod : fastPer,
-        slowPeriod : slowPer,
-        signalPeriod : signal,
-        SimpleMAOscillator : false,
-        SimpleMASignal : false
-    }
-    return MACD.calculate(macdInput);
-}
-
 const countDecimals = (value) => {
     let text = value.toString()
 
@@ -105,6 +85,26 @@ const reportToMaster = () => {
 
 
 //Candles + signals:
+const ema = (close, per) => {
+    let input = {
+        period: per,
+        values: close
+    };
+    return EMA.calculate(input);
+};
+
+const macd = (close, fastPer, slowPer, signal) => {
+    const macdInput = {
+        values : close,
+        fastPeriod : fastPer,
+        slowPeriod : slowPer,
+        signalPeriod : signal,
+        SimpleMAOscillator : false,
+        SimpleMASignal : false
+    }
+    return MACD.calculate(macdInput);
+}
+
 const pushToTemp = (data) => {
     globalState.lastAsk = Number(data.lowest_ask);
     globalState.lastBid = Number(data.highest_bid);
@@ -148,7 +148,7 @@ const createCandle = () => {
 
     globalState.tempRealpriceChangeHolder = [];
 
-    globalState.closePriceList.push(Number(candleDataBase[candleDataBase.length -1].close));
+    globalState.closePriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].close));
     generateSignals();
     
     console.log(`Candle created! #${globalState.candleCounter}`)
