@@ -39,6 +39,11 @@ let globalState = {
     hbdBuyErrors : 0
 };
 
+//Helpers:
+const round = (value, decimals) => {
+    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
+};
+
 const ema = (close, per) => {
     let input = {
         period: per,
@@ -59,9 +64,20 @@ const macd = (close, fastPer, slowPer, signal) => {
     return MACD.calculate(macdInput);
 }
 
-const round = (value, decimals) => {
-    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
-};
+const countDecimals = (value) => {
+    let text = value.toString()
+
+    if (text.indexOf('e-') > -1) {
+      let [base, trail] = text.split('e-');
+      let deg = parseInt(trail, 10);
+      return deg;
+    }
+
+    if (Math.floor(value) !== value) {
+      return value.toString().split(".")[1].length || 0;
+    }
+    return 0;
+}
 
 const logProgress = () => {
     console.log(`* Price updated (#${globalState.updateCounter})! - Current candles: ${globalState.candleDataBase1.length} / ${candleLimit} (Price check errors: ${globalState.priceUpdateErrors})`)
@@ -70,6 +86,93 @@ const logProgress = () => {
     console.log('----------------------')
 }
 
+const reportToMaster = () => {
+    const json = JSON.stringify({
+        candlesCreated : globalState.candleCounter,
+        currentCandles : globalState.candleDataBase1.length,
+        priceCheckErrors : globalState.priceUpdateErrors,
+        tradeStatus : globalState.tradeStatus,
+        hiveBuyTicker : globalState.hiveBuyCounter,
+        hiveBuyErrors : globalState.hiveBuyErrors,
+        hbdBuyTicker : globalState.hbdBuyCounter,
+        hbdBuyErrors : globalState.hbdBuyErrors
+    });
+
+    try {
+        hive.broadcast.customJson(bKey, [], [username], `${username}-scalpyh-report`, json, function(err, result) {
+            if (err) {
+            } else {
+            }
+        });
+    } catch (error) {
+    }
+}
+
+
+//Candles + signals:
+const generatePriceLists = () => {
+    if (globalState.candleCounter > 0) {
+        globalState.closePriceList.hive = [];
+        globalState.closePriceList.hbd = [];
+
+        for (i of globalState.candleDataBase1) {
+            globalState.closePriceList.hive.push(i.close)
+        }
+
+        for (i of globalState.candleDataBase2) {
+            globalState.closePriceList.hbd.push(i.close)
+        }
+    }
+}
+
+const createCandle = () => {
+    globalState.candleCounter++;
+    globalState.candleDataBase1.push({
+        open : globalState.tempPriceHolder1[0],
+        high : Math.max(...globalState.tempPriceHolder1),
+        close : globalState.tempPriceHolder1[globalState.tempPriceHolder1.length -1],
+        low : Math.min(...globalState.tempPriceHolder1)
+    })
+
+    globalState.candleDataBase2.push({
+        open : globalState.tempPriceHolder2[0],
+        high : Math.max(...globalState.tempPriceHolder2),
+        close : globalState.tempPriceHolder2[globalState.tempPriceHolder2.length -1],
+        low : Math.min(...globalState.tempPriceHolder2)
+    })
+
+    globalState.tempPriceHolder1 = [];
+    globalState.tempPriceHolder2 = [];
+
+    generatePriceLists();
+    generateSignals();
+    
+    console.log(`Candle created! #${globalState.candleCounter}`)
+    console.log('----------------------')
+
+    if (globalState.candleCounter % 30 == 0) {
+        reportToMaster();
+    }
+}
+
+const generateSignals = () => {
+    globalState.emaListHive = ema(globalState.closePriceList.hive, 100);
+    globalState.emaListHbd = ema(globalState.closePriceList.hbd, 100);
+    globalState.macdListHive = macd(globalState.closePriceList.hive, 12, 26, 9);
+    globalState.macdListHbd = macd(globalState.closePriceList.hbd, 12, 26, 9);
+
+    globalState.lastEmaHive = globalState.emaListHive[globalState.emaListHive.length - 1];
+    globalState.lastEmaHbd = globalState.emaListHbd[globalState.emaListHbd.length - 1];
+
+    globalState.lastMacHive = globalState.macdListHive[globalState.macdListHive.length - 1];
+    globalState.prevMacHive = globalState.macdListHive[globalState.macdListHive.length - 2];
+
+    globalState.lastMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 1];
+    globalState.prevMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 2];
+}
+
+
+//Algo(s):
 const tradingAlgo = (prevEma, prevmacd, prev2macd, preCandle) => {
     if ( parseFloat(preCandle.close) > parseFloat(prevEma)
         && parseFloat(prevmacd.MACD) > parseFloat(prevmacd.signal)
@@ -90,21 +193,8 @@ const tradingAlgoSell = (prevEma, prevmacd, prev2macd, preCandle) => {
     return false
 }
 
-const countDecimals = (value) => {
-    let text = value.toString()
 
-    if (text.indexOf('e-') > -1) {
-      let [base, trail] = text.split('e-');
-      let deg = parseInt(trail, 10);
-      return deg;
-    }
-
-    if (Math.floor(value) !== value) {
-      return value.toString().split(".")[1].length || 0;
-    }
-    return 0;
-}
-
+//Trading:
 const buyHive = () => {
     globalState.lastBuyTimeHive = new Date().getTime();
 
@@ -165,89 +255,8 @@ const buyHbd = () => {
     }
 }
 
-const generatePriceLists = () => {
-    if (globalState.candleCounter > 0) {
-        globalState.closePriceList.hive = [];
-        globalState.closePriceList.hbd = [];
 
-        for (i of globalState.candleDataBase1) {
-            globalState.closePriceList.hive.push(i.close)
-        }
-
-        for (i of globalState.candleDataBase2) {
-            globalState.closePriceList.hbd.push(i.close)
-        }
-    }
-}
-
-const createCandle = () => {
-    globalState.candleCounter++;
-    globalState.candleDataBase1.push({
-        open : globalState.tempPriceHolder1[0],
-        high : Math.max(...globalState.tempPriceHolder1),
-        close : globalState.tempPriceHolder1[globalState.tempPriceHolder1.length -1],
-        low : Math.min(...globalState.tempPriceHolder1)
-    })
-
-    globalState.candleDataBase2.push({
-        open : globalState.tempPriceHolder2[0],
-        high : Math.max(...globalState.tempPriceHolder2),
-        close : globalState.tempPriceHolder2[globalState.tempPriceHolder2.length -1],
-        low : Math.min(...globalState.tempPriceHolder2)
-    })
-
-    globalState.tempPriceHolder1 = [];
-    globalState.tempPriceHolder2 = [];
-
-    generatePriceLists();
-    generateSignals();
-    
-    console.log(`Candle created! #${globalState.candleCounter}`)
-    console.log('----------------------')
-
-    if (globalState.candleDataBase1.length % 30 == 0) {
-        reportToMaster();
-    }
-}
-
-const reportToMaster = () => {
-    const json = JSON.stringify({
-        candlesCreated : globalState.candleCounter,
-        currentCandles : globalState.candleDataBase1.length,
-        priceCheckErrors : globalState.priceUpdateErrors,
-        tradeStatus : globalState.tradeStatus,
-        hiveBuyTicker : globalState.hiveBuyCounter,
-        hiveBuyErrors : globalState.hiveBuyErrors,
-        hbdBuyTicker : globalState.hbdBuyCounter,
-        hbdBuyErrors : globalState.hbdBuyErrors
-    });
-
-    try {
-        hive.broadcast.customJson(bKey, [], [username], `${username}-scalpyh-report`, json, function(err, result) {
-            if (err) {
-            } else {
-            }
-        });
-    } catch (error) {
-    }
-}
-
-const generateSignals = () => {
-    globalState.emaListHive = ema(globalState.closePriceList.hive, 100);
-    globalState.emaListHbd = ema(globalState.closePriceList.hbd, 100);
-    globalState.macdListHive = macd(globalState.closePriceList.hive, 12, 26, 9);
-    globalState.macdListHbd = macd(globalState.closePriceList.hbd, 12, 26, 9);
-
-    globalState.lastEmaHive = globalState.emaListHive[globalState.emaListHive.length - 1];
-    globalState.lastEmaHbd = globalState.emaListHbd[globalState.emaListHbd.length - 1];
-
-    globalState.lastMacHive = globalState.macdListHive[globalState.macdListHive.length - 1];
-    globalState.prevMacHive = globalState.macdListHive[globalState.macdListHive.length - 2];
-
-    globalState.lastMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 1];
-    globalState.prevMacHbd = globalState.macdListHbd[globalState.macdListHbd.length - 2];
-}
-
+//Main loop:
 const updatePrice = () => {
     new Promise(() => {
         setTimeout( async () => {
@@ -317,13 +326,11 @@ const updatePrice = () => {
     })
 }
 
-const main = () => {
-    globalState.startingTime = new Date().getTime()
-    globalState.lastUpdate = globalState.startingTime;
-    globalState.lastCandleCreated = globalState.startingTime;
 
-    console.log('Starting...')
-    updatePrice();
-}
+//Start script:
+globalState.startingTime = new Date().getTime()
+globalState.lastUpdate = globalState.startingTime;
+globalState.lastCandleCreated = globalState.startingTime;
 
-main();
+console.log('Starting...')
+updatePrice();
