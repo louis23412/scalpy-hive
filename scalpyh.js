@@ -105,47 +105,6 @@ const reportToMaster = () => {
 
 
 //Candles + signals:
-const generatePriceLists = () => {
-    if (globalState.candleCounter > 0) {
-        globalState.closePriceList = [];
-
-        for (i of globalState.candleDataBase) {
-            globalState.closePriceList.push(i.close)
-        }
-    }
-}
-
-const createCandle = () => {
-    globalState.candleCounter++;
-    globalState.candleDataBase.push({
-        open : Number(globalState.tempRealpriceChangeHolder[0]),
-        high : Math.max(...globalState.tempRealpriceChangeHolder),
-        close : Number(globalState.tempRealpriceChangeHolder[globalState.tempRealpriceChangeHolder.length -1]),
-        low : Math.min(...globalState.tempRealpriceChangeHolder)
-    })
-
-    globalState.tempRealpriceChangeHolder = [];
-
-    generatePriceLists();
-    generateSignals();
-    
-    console.log(`Candle created! #${globalState.candleCounter}`)
-    console.log('----------------------')
-
-    if (globalState.candleCounter % 30 == 0) {
-        reportToMaster();
-    }
-}
-
-const generateSignals = () => {
-    globalState.emaList = ema(globalState.closePriceList, 100);
-    globalState.macdList = macd(globalState.closePriceList, 12, 26, 9);
-
-    globalState.lastEma = globalState.emaList[globalState.emaList.length - 1];
-    globalState.lastMac = globalState.macdList[globalState.macdList.length - 1];
-    globalState.prevMac = globalState.macdList[globalState.macdList.length - 2];
-}
-
 const pushToTemp = (data) => {
     globalState.lastAsk = Number(data.lowest_ask);
     globalState.lastBid = Number(data.highest_bid);
@@ -176,6 +135,37 @@ const pushToTemp = (data) => {
             globalState.tempRealpriceChangeHolder.push(globalState.lastAsk);
         }
     }
+}
+
+const createCandle = () => {
+    globalState.candleCounter++;
+    globalState.candleDataBase.push({
+        open : Number(globalState.tempRealpriceChangeHolder[0]),
+        high : Math.max(...globalState.tempRealpriceChangeHolder),
+        close : Number(globalState.tempRealpriceChangeHolder[globalState.tempRealpriceChangeHolder.length -1]),
+        low : Math.min(...globalState.tempRealpriceChangeHolder)
+    })
+
+    globalState.tempRealpriceChangeHolder = [];
+
+    globalState.closePriceList.push(Number(candleDataBase[candleDataBase.length -1].close));
+    generateSignals();
+    
+    console.log(`Candle created! #${globalState.candleCounter}`)
+    console.log('----------------------')
+
+    if (globalState.candleCounter % 30 == 0) {
+        reportToMaster();
+    }
+}
+
+const generateSignals = () => {
+    globalState.emaList = ema(globalState.closePriceList, 100);
+    globalState.macdList = macd(globalState.closePriceList, 12, 26, 9);
+
+    globalState.lastEma = globalState.emaList[globalState.emaList.length - 1];
+    globalState.lastMac = globalState.macdList[globalState.macdList.length - 1];
+    globalState.prevMac = globalState.macdList[globalState.macdList.length - 2];
 }
 
 
@@ -223,7 +213,11 @@ const buyHive = () => {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
                 hive.broadcast.limitOrderCreate(pKey, username, globalState.hiveBuyCounter + 100, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
-                    globalState.hiveBuyCounter++
+                    if (err) {
+                        globalState.hiveBuyErrors++;
+                    } else {
+                        globalState.hiveBuyCounter++;
+                    }
                 });
             }
         }); 
@@ -253,7 +247,11 @@ const buyHbd = () => {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
                 hive.broadcast.limitOrderCreate(pKey, username, globalState.hbdBuyCounter + 1000, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
-                    globalState.hbdBuyCounter++
+                    if (err) {
+                        globalState.hbdBuyErrors++;
+                    } else {
+                        globalState.hbdBuyCounter++;
+                    }
                 });
             }
         });
@@ -274,7 +272,6 @@ const updatePrice = () => {
             if (globalState.lastUpdate - globalState.lastCandleCreated >= (candleSize * 60) * 1000) {
                 createCandle()
                 globalState.lastCandleCreated = globalState.lastUpdate;
-                console.log(globalState.candleDataBase);
             }
 
             if (globalState.candleDataBase.length == candleLimit + 1) {
@@ -308,12 +305,12 @@ const updatePrice = () => {
                 globalState.tradeStatus = true;
 
                 if (tradingAlgo(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
-                && (globalState.lastUpdate - globalState.lastBuyTimeHive) / 1000 >= 180) {
+                && (globalState.lastUpdate - globalState.lastBuyTime) / 1000 >= 180) {
                     buyHive();
                 }
 
                 if (tradingAlgoSell(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
-                && (globalState.lastUpdate - globalState.lastBuyTimeHbd) / 1000 >= 180) {
+                && (globalState.lastUpdate - globalState.lastBuyTime) / 1000 >= 180) {
                     buyHbd();
                 }
             }
