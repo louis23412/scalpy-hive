@@ -193,7 +193,7 @@ const tradingAlgoSell = (prevEma, prevmacd, prev2macd, preCandle) => {
 
 //Trading:
 const buyHive = () => {
-    globalState.lastBuyTimeHive = new Date().getTime();
+    globalState.lastBuyTime = new Date().getTime();
 
     let sellAmount = `${tradeSize} HBD`
 
@@ -227,7 +227,7 @@ const buyHive = () => {
 }
 
 const buyHbd = () => {
-    globalState.lastBuyTimeHbd = new Date().getTime();
+    globalState.lastBuyTime = new Date().getTime();
 
     let sellAmount = `${tradeSize} HIVE`
 
