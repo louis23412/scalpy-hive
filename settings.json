@@ -1,7 +1,7 @@
 {
     "updateRate" : 3,
     "candleSize" : 1,
-    "candleLimit" : 1000,
+    "candleLimit" : 2500,
 
     "tradeSize" : 0.301,
     "username" : "usernameHere",

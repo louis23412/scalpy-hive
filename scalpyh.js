@@ -1,8 +1,6 @@
 const fs = require('fs');
 const hive = require('@hiveio/hive-js');
-const { 
-    updateRate, candleSize, candleLimit, tradeSize, username, pKey, bKey
-} = JSON.parse(fs.readFileSync('./settings.json'));
+const { updateRate, candleSize, candleLimit, tradeSize, username, pKey, bKey } = JSON.parse(fs.readFileSync('./settings.json'));
 const EMA = require('technicalindicators').EMA;
 const MACD = require('technicalindicators').MACD;
 
@@ -21,6 +19,8 @@ let globalState = {
     tempRealpriceChangeHolder : [],
 
     closePriceList : [],
+    highPriceList : [],
+    lowPriceList : [],
 
     emaList : [],
     macdList : [],
@@ -29,9 +29,11 @@ let globalState = {
 
     hiveBuyCounter : 0,
     hiveBuyErrors : 0,
+    hiveFlips : 0,
 
     hbdBuyCounter : 0,
-    hbdBuyErrors : 0
+    hbdBuyErrors : 0,
+    hbdFlips : 0
 };
 
 //Helpers:
@@ -55,10 +57,12 @@ const countDecimals = (value) => {
 }
 
 const logProgress = () => {
-    console.log(`* Price updated (#${globalState.updateCounter})! - Current candles: ${globalState.candleDataBase.length} / ${candleLimit} (Price check errors: ${globalState.priceUpdateErrors})`)
-    console.log(`* Trade status: ${globalState.tradeStatus} ==> Hive buy count: ${globalState.hiveBuyCounter}(${globalState.hiveBuyErrors} errors) - Hbd buy count: ${globalState.hbdBuyCounter}(${globalState.hbdBuyErrors} errors)`)
-    console.log(`Price ticker: ${globalState.priceTicker}`)
-    console.log('----------------------')
+    if (globalState.updateCounter != 0) {
+        console.log(`* Price updated (#${globalState.updateCounter})! - Current candles: ${globalState.candleDataBase.length} / ${candleLimit} (Price check errors: ${globalState.priceUpdateErrors})`)
+        console.log(`* Trade status: ${globalState.tradeStatus} ==> Hive buy count: ${globalState.hiveBuyCounter}(${globalState.hiveBuyErrors} errors) - Hbd buy count: ${globalState.hbdBuyCounter}(${globalState.hbdBuyErrors} errors)`)
+        console.log(`* Price ticker: ${globalState.priceTicker}`)
+        console.log('----------------------')
+    }
 }
 
 const reportToMaster = () => {
@@ -69,8 +73,10 @@ const reportToMaster = () => {
         tradeStatus : globalState.tradeStatus,
         hiveBuyTicker : globalState.hiveBuyCounter,
         hiveBuyErrors : globalState.hiveBuyErrors,
+        hiveFlips : globalState.hiveFlips,
         hbdBuyTicker : globalState.hbdBuyCounter,
-        hbdBuyErrors : globalState.hbdBuyErrors
+        hbdBuyErrors : globalState.hbdBuyErrors,
+        hbdFlips : globalState.hbdFlips
     });
 
     try {
@@ -149,6 +155,12 @@ const createCandle = () => {
     globalState.tempRealpriceChangeHolder = [];
 
     globalState.closePriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].close));
+    globalState.highPriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].high));
+    globalState.lowPriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].low));
+
+    globalState.lastPeakHigh = Math.max(...globalState.highPriceList.slice(Math.max(globalState.highPriceList.length - 20, 0)));
+    globalState.lastPeakLow = Math.min(...globalState.lowPriceList.slice(Math.max(globalState.lowPriceList.length - 20, 0)));
+
     generateSignals();
     
     console.log(`Candle created! #${globalState.candleCounter}`)
@@ -192,31 +204,43 @@ const tradingAlgoSell = (prevEma, prevmacd, prev2macd, preCandle) => {
 
 
 //Trading:
-const buyHive = () => {
+const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
+    console.log('Buy Hive now')
     globalState.lastBuyTime = new Date().getTime();
+    const xdec = countDecimals(buyQty);
+    const xdec2 = countDecimals(sellQty);
 
-    let sellAmount = `${tradeSize} HBD`
-
-    let xamount = round(tradeSize / globalState.candleDataBase[globalState.candleDataBase.length - 1].close, 3)
-    let xdec = countDecimals(xamount);
-    let receiveAmount = 0;
-
+    let sellAmount = '';
     if (xdec == 3) {
-        receiveAmount = `${xamount} HIVE`
+        sellAmount = `${buyQty} HBD`;
     } else if (xdec == 2) {
-        receiveAmount = `${xamount}0 HIVE`
-    } else if (xdec == 1) {
-        receiveAmount = `${xamount}00 HIVE`
+        sellAmount = `${buyQty}0 HBD`;
+    } else if (xdec ==1) {
+        sellAmount = `${buyQty}0 HBD`;
+    }
+
+    let receiveAmount = '';
+    if (xdec2 == 3) {
+        receiveAmount = `${sellQty} HIVE`
+    } else if (xdec2 == 2) {
+        receiveAmount = `${sellQty}0 HIVE`
+    } else if (xdec2 == 1) {
+        receiveAmount = `${sellQty}00 HIVE`
     }
 
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
-                hive.broadcast.limitOrderCreate(pKey, username, globalState.hiveBuyCounter + 100, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
+                hive.broadcast.limitOrderCreate(pKey, username, Math.floor(100000 + Math.random() * 900000), sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 3600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
                     if (err) {
                         globalState.hiveBuyErrors++;
                     } else {
-                        globalState.hiveBuyCounter++;
+                        if (tp == true) {
+                            globalState.hiveBuyCounter++;
+                            buyHbd(sellQty, buyQty + tpTicker)
+                        } else {
+                            globalState.hiveFlips++;
+                        }
                     }
                 });
             }
@@ -226,35 +250,47 @@ const buyHive = () => {
     }
 }
 
-const buyHbd = () => {
+const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
+    console.log('Buy Hbd now')
     globalState.lastBuyTime = new Date().getTime();
+    const xdec = countDecimals(buyQty);
+    const xdec2 = countDecimals(sellQty);
 
-    let sellAmount = `${tradeSize} HIVE`
-
-    let xamount = round(globalState.candleDataBase[globalState.candleDataBase.length - 1].close * tradeSize, 3)
-    let xdec = countDecimals(xamount);
-    let receiveAmount = 0;
-
+    let sellAmount = '';
     if (xdec == 3) {
-        receiveAmount = `${xamount} HBD`
+        sellAmount = `${buyQty} HIVE`;
     } else if (xdec == 2) {
-        receiveAmount = `${xamount}0 HBD`
-    } else if (xdec == 1) {
-        receiveAmount = `${xamount}00 HBD`
+        sellAmount = `${buyQty}0 HIVE`;
+    } else if (xdec ==1) {
+        sellAmount = `${buyQty}0 HIVE`;
+    }
+
+    let receiveAmount = '';
+    if (xdec2 == 3) {
+        receiveAmount = `${sellQty} HBD`
+    } else if (xdec2 == 2) {
+        receiveAmount = `${sellQty}0 HBD`
+    } else if (xdec2 == 1) {
+        receiveAmount = `${sellQty}00 HBD`
     }
 
     try {
         hive.api.getDynamicGlobalProperties(function(err, result) {
             if (result) {
-                hive.broadcast.limitOrderCreate(pKey, username, globalState.hbdBuyCounter + 1000, sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
+                hive.broadcast.limitOrderCreate(pKey, username, Math.floor(100000 + Math.random() * 900000), sellAmount, receiveAmount, false, new Date(new Date(result.time).getTime() + 3600000 + ((Math.abs(new Date().getTimezoneOffset()) * 1000) * 60)), function(err, result) {
                     if (err) {
                         globalState.hbdBuyErrors++;
                     } else {
-                        globalState.hbdBuyCounter++;
+                        if (tp == true) {
+                            globalState.hbdBuyCounter++;
+                            buyHive(sellQty, buyQty + tpTicker)
+                        } else {
+                            globalState.hbdFlips++;
+                        }
                     }
                 });
             }
-        });
+        }); 
     } catch (error) {
         globalState.hbdBuyErrors++;
     }
@@ -277,6 +313,8 @@ const updatePrice = () => {
             if (globalState.candleDataBase.length == candleLimit + 1) {
                 globalState.candleDataBase.shift();
                 globalState.closePriceList.shift();
+                globalState.highPriceList.shift();
+                globalState.lowPriceList.shift();
             }
 
             if (globalState.emaList.length > 10) {
@@ -306,12 +344,26 @@ const updatePrice = () => {
 
                 if (tradingAlgo(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
                 && (globalState.lastUpdate - globalState.lastBuyTime) / 1000 >= 180) {
-                    buyHive();
+                    const buyQty = round(tradeSize / globalState.candleDataBase[globalState.candleDataBase.length - 1].close, 3);
+                    const tpIncreasePercent = (globalState.lastPeakHigh - globalState.candleDataBase[globalState.candleDataBase.length - 1].close) / globalState.candleDataBase[globalState.candleDataBase.length - 1].close;
+                    let tpTicker = round(buyQty * tpIncreasePercent, 3);
+    
+                    if (tpTicker < 0.001) {
+                        tpTicker = 0.001
+                    }
+                    buyHive(tradeSize, buyQty, true, tpTicker);
                 }
 
                 if (tradingAlgoSell(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
                 && (globalState.lastUpdate - globalState.lastBuyTime) / 1000 >= 180) {
-                    buyHbd();
+                    const buyQty = round(globalState.candleDataBase[globalState.candleDataBase.length - 1].close * tradeSize, 3);
+                    const tpIncreasePercent = (globalState.candleDataBase[globalState.candleDataBase.length - 1].close - globalState.lastPeakLow) / globalState.candleDataBase[globalState.candleDataBase.length - 1].close
+                    let tpTicker = round(buyQty * tpIncreasePercent, 3);
+    
+                    if (tpTicker < 0.001) {
+                        tpTicker = 0.001
+                    }
+                    buyHbd(tradeSize, buyQty, true, tpTicker);
                 }
             }
 
