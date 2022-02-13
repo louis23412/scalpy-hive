@@ -237,7 +237,10 @@ const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
                     } else {
                         if (tp == true) {
                             globalState.hiveBuyCounter++;
-                            buyHbd(sellQty, buyQty + tpTicker)
+                            try {
+                                buyHbd(sellQty, buyQty + tpTicker)
+                            } catch (error) {
+                            }
                         } else {
                             globalState.hiveFlips++;
                         }
@@ -283,7 +286,10 @@ const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
                     } else {
                         if (tp == true) {
                             globalState.hbdBuyCounter++;
-                            buyHive(sellQty, buyQty + tpTicker)
+                            try {
+                                buyHive(sellQty, buyQty + tpTicker)
+                            } catch (error) {  
+                            }
                         } else {
                             globalState.hbdFlips++;
                         }
@@ -351,7 +357,11 @@ const updatePrice = () => {
                     if (tpTicker < 0.001) {
                         tpTicker = 0.001
                     }
-                    buyHive(tradeSize, buyQty, true, tpTicker);
+
+                    try {
+                        buyHive(tradeSize, buyQty, true, tpTicker);
+                    } catch (error) {
+                    }
                 }
 
                 if (tradingAlgoSell(globalState.lastEma, globalState.lastMac, globalState.prevMac, globalState.candleDataBase[globalState.candleDataBase.length - 1])
@@ -363,7 +373,11 @@ const updatePrice = () => {
                     if (tpTicker < 0.001) {
                         tpTicker = 0.001
                     }
-                    buyHbd(tradeSize, buyQty, true, tpTicker);
+
+                    try {
+                        buyHbd(tradeSize, buyQty, true, tpTicker);
+                    } catch (error) {
+                    }
                 }
             }
 
