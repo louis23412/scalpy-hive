@@ -30,10 +30,12 @@ let globalState = {
     hiveBuyCounter : 0,
     hiveBuyErrors : 0,
     hiveFlips : 0,
+    ppHive : 0,
 
     hbdBuyCounter : 0,
     hbdBuyErrors : 0,
-    hbdFlips : 0
+    hbdFlips : 0,
+    ppHbd : 0
 };
 
 //Helpers:
@@ -67,16 +69,25 @@ const logProgress = () => {
 
 const reportToMaster = () => {
     const json = JSON.stringify({
-        candlesCreated : globalState.candleCounter,
-        currentCandles : globalState.candleDataBase.length,
         priceCheckErrors : globalState.priceUpdateErrors,
         tradeStatus : globalState.tradeStatus,
-        hiveBuyTicker : globalState.hiveBuyCounter,
-        hiveBuyErrors : globalState.hiveBuyErrors,
-        hiveFlips : globalState.hiveFlips,
-        hbdBuyTicker : globalState.hbdBuyCounter,
-        hbdBuyErrors : globalState.hbdBuyErrors,
-        hbdFlips : globalState.hbdFlips
+        ordersPlaced : globalState.hiveBuyCounter + globalState.hbdBuyCounter + globalState.hiveFlips + globalState.hbdFlips,
+        candlesCreated : globalState.candleCounter,
+        currentCandles : globalState.candleDataBase.length,
+
+        hive : {
+            buys : globalState.hiveBuyCounter,
+            buyErrors : globalState.hiveBuyErrors,
+            flips : globalState.hiveFlips,
+            pp : globalState.ppHive
+        },
+
+        hbd : {
+            buys : globalState.hbdBuyCounter,
+            buyErrors : globalState.hbdBuyErrors,
+            flips : globalState.hbdFlips,
+            pp : globalState.ppHbd
+        }
     });
 
     try {
@@ -158,6 +169,13 @@ const createCandle = () => {
     globalState.highPriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].high));
     globalState.lowPriceList.push(Number(globalState.candleDataBase[globalState.candleDataBase.length -1].low));
 
+    if (globalState.candleDataBase.length == candleLimit + 1) {
+        globalState.candleDataBase.shift();
+        globalState.closePriceList.shift();
+        globalState.highPriceList.shift();
+        globalState.lowPriceList.shift();
+    }
+
     globalState.lastPeakHigh = Math.max(...globalState.highPriceList.slice(Math.max(globalState.highPriceList.length - 20, 0)));
     globalState.lastPeakLow = Math.min(...globalState.lowPriceList.slice(Math.max(globalState.lowPriceList.length - 20, 0)));
 
@@ -174,6 +192,14 @@ const createCandle = () => {
 const generateSignals = () => {
     globalState.emaList = ema(globalState.closePriceList, 100);
     globalState.macdList = macd(globalState.closePriceList, 12, 26, 9);
+
+    if (globalState.emaList.length > 10) {
+        globalState.emaList = globalState.emaList.slice(Math.max(globalState.emaList.length - 10, 1));
+    }
+
+    if (globalState.macdList.length > 10) {
+        globalState.macdList = globalState.macdList.slice(Math.max(globalState.macdList.length - 10, 1));
+    }
 
     globalState.lastEma = globalState.emaList[globalState.emaList.length - 1];
     globalState.lastMac = globalState.macdList[globalState.macdList.length - 1];
@@ -215,8 +241,10 @@ const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
         sellAmount = `${buyQty} HBD`;
     } else if (xdec == 2) {
         sellAmount = `${buyQty}0 HBD`;
-    } else if (xdec ==1) {
-        sellAmount = `${buyQty}0 HBD`;
+    } else if (xdec == 1) {
+        sellAmount = `${buyQty}00 HBD`;
+    } else if (xdec == 0) {
+        sellAmount = `${buyQty}.000 HBD`;
     }
 
     let receiveAmount = '';
@@ -226,6 +254,8 @@ const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
         receiveAmount = `${sellQty}0 HIVE`
     } else if (xdec2 == 1) {
         receiveAmount = `${sellQty}00 HIVE`
+    } else if (xdec2 == 0) {
+        receiveAmount = `${buyQty}.000 HIVE`;
     }
 
     try {
@@ -239,6 +269,7 @@ const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
                             globalState.hiveBuyCounter++;
                             try {
                                 buyHbd(sellQty, buyQty + tpTicker)
+                                globalState.ppHbd += tpTicker;
                             } catch (error) {
                             }
                         } else {
@@ -264,8 +295,10 @@ const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
         sellAmount = `${buyQty} HIVE`;
     } else if (xdec == 2) {
         sellAmount = `${buyQty}0 HIVE`;
-    } else if (xdec ==1) {
-        sellAmount = `${buyQty}0 HIVE`;
+    } else if (xdec == 1) {
+        sellAmount = `${buyQty}00 HIVE`;
+    } else if (xdec == 0) {
+        sellAmount = `${buyQty}.000 HIVE`;
     }
 
     let receiveAmount = '';
@@ -275,6 +308,8 @@ const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
         receiveAmount = `${sellQty}0 HBD`
     } else if (xdec2 == 1) {
         receiveAmount = `${sellQty}00 HBD`
+    } else if (xdec2 == 0) {
+        receiveAmount = `${buyQty}.000 HBD`;
     }
 
     try {
@@ -288,6 +323,7 @@ const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
                             globalState.hbdBuyCounter++;
                             try {
                                 buyHive(sellQty, buyQty + tpTicker)
+                                globalState.ppHive += tpTicker;
                             } catch (error) {  
                             }
                         } else {
@@ -314,21 +350,6 @@ const updatePrice = () => {
             if (globalState.lastUpdate - globalState.lastCandleCreated >= (candleSize * 60) * 1000) {
                 createCandle()
                 globalState.lastCandleCreated = globalState.lastUpdate;
-            }
-
-            if (globalState.candleDataBase.length == candleLimit + 1) {
-                globalState.candleDataBase.shift();
-                globalState.closePriceList.shift();
-                globalState.highPriceList.shift();
-                globalState.lowPriceList.shift();
-            }
-
-            if (globalState.emaList.length > 10) {
-                globalState.emaList = globalState.emaList.slice(Math.max(globalState.emaList.length - 10, 1));
-            }
-
-            if (globalState.macdList.length > 10) {
-                globalState.macdList = globalState.macdList.slice(Math.max(globalState.macdList.length - 10, 1));
             }
 
             try {
