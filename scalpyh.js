@@ -255,7 +255,7 @@ const buyHive = (buyQty, sellQty, tp=false, tpTicker=0) => {
     } else if (xdec2 == 1) {
         receiveAmount = `${sellQty}00 HIVE`
     } else if (xdec2 == 0) {
-        receiveAmount = `${buyQty}.000 HIVE`;
+        receiveAmount = `${sellQty}.000 HIVE`;
     }
 
     try {
@@ -309,7 +309,7 @@ const buyHbd = (buyQty, sellQty, tp=false, tpTicker=0) => {
     } else if (xdec2 == 1) {
         receiveAmount = `${sellQty}00 HBD`
     } else if (xdec2 == 0) {
-        receiveAmount = `${buyQty}.000 HBD`;
+        receiveAmount = `${sellQty}.000 HBD`;
     }
 
     try {
